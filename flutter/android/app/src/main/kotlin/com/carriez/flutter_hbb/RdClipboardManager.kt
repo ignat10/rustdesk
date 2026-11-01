@@ -7,6 +7,7 @@ import java.util.TimerTask
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
+import android.os.Parcel
 import android.util.Log
 import androidx.annotation.Keep
 
@@ -18,7 +19,7 @@ import ffi.FFI
 
 class RdClipboardManager(private val clipboardManager: ClipboardManager) {
     companion object {
-        private const val MAX_CLIPBOARD_TEXT_CODE_UNITS = 1024 * 1024
+        private const val MAX_CLIPBOARD_PARCEL_BYTES = 800 * 1024
     }
 
     private val logTag = "RdClipboardManager"
@@ -194,14 +195,24 @@ class RdClipboardManager(private val clipboardManager: ClipboardManager) {
             Log.e(logTag, "No item in clipboard")
             return
         }
-        val textLength = text?.length ?: 0
-        val htmlLength = html?.length ?: 0
-        if (textLength > MAX_CLIPBOARD_TEXT_CODE_UNITS || htmlLength > MAX_CLIPBOARD_TEXT_CODE_UNITS - textLength) {
+        val clipData = ClipData(clipDescription, item)
+        val parcel = Parcel.obtain()
+        val isTooLarge = try {
+            clipData.writeToParcel(parcel, 0)
+            parcel.dataSize() > MAX_CLIPBOARD_PARCEL_BYTES
+        } finally {
+            parcel.recycle()
+        }
+        if (isTooLarge) {
             Log.w(logTag, "Remote clipboard text is too large for Android clipboard")
             return
         }
-        val clipData = ClipData(clipDescription, item)
-        lastUpdatedClipData = clipData
-        clipboardManager.setPrimaryClip(clipData)
+
+        try {
+            clipboardManager.setPrimaryClip(clipData)
+            lastUpdatedClipData = clipData
+        } catch (e: Exception) {
+            Log.e(logTag, "Failed to set primary clip", e)
+        }
     }
 }
